@@ -2,6 +2,7 @@
 
 stty -echo
 trap 'end 130' EXIT INT; trap init_term WINCH
+case ${1,,} in -o|obstacle) obstacle_mode=1;; esac
 
 skip(){ if (( ${n:=1} > ${1:-1} )); then :; else ((n++)); false; fi; }
 
@@ -11,6 +12,7 @@ init_term(){
 
   printf '\e[?1049h\e[2J\e[?25l\e[?7l'
   rand_block
+  ((obstacle_mode))&& init_obstacles
 }
 
 end(){ stty echo; printf '\e[?1049l\e[?25h\e[?7h'; exit "${1:-0}"; }
@@ -40,10 +42,15 @@ read_keys(){
 
 status_bar(){
   printf '\e[999H\e[2K\e[1;32mSNAKE\e[m x:%d y:%d len:%d spe:%d' "$1" "$2" "$3" "$4"
+  ((obstacle_mode))&& printf ' \e[1;35mmode:obstacle\e[m'
 }
 
 rand_block(){
-  ((blockX=SRANDOM%COLS+1)); ((blockY=SRANDOM%ROWS+1)); block="$blockY;$blockX"
+  local attempts
+  for((attempts=0;attempts<100;attempts++)); do
+    ((blockX=SRANDOM%COLS+1)); ((blockY=SRANDOM%ROWS+1)); block="$blockY;$blockX"
+    ((!obstacle_mode))||[[ ! ${obstacles["$block"]} ]] && break
+  done
   printf '\e[%sH\e[41m \e[m' "$block"
 }
 
@@ -65,7 +72,27 @@ consume_block(){ [[ $1 == "$block" ]]&&{ ((delay--)); ((len++)); rand_block; }; 
 
 self_collision(){ [[ $1 == "${snake[-1]}" ]]&& game_over 4 1; }
 
+obstacle_collision(){ ((obstacle_mode))&&[[ ${obstacles["$2;$1"]} ]]&& game_over 4 1; }
+
 wall_collision(){ (( $1 < 1|| $1 > COLS|| $2 < 1|| $2 > ROWS ))&& game_over 4 1; }
+
+init_obstacles(){
+  declare -gA obstacles
+  local count attempts ox oy opos
+  ((count=ROWS*COLS/80))
+  ((count<10))&& count=10; ((count>50))&& count=50
+  for((;count>0;count--)); do
+    for((attempts=0;attempts<100;attempts++)); do
+      ((ox=SRANDOM%COLS+1)); ((oy=SRANDOM%ROWS+1)); opos="$oy;$ox"
+      [[ ${obstacles["$opos"]} ]] && continue
+      [[ "$opos" == "$block" ]] && continue
+      (( oy == snakeY && ox >= snakeX-1 && ox <= snakeX+4 )) && continue
+      obstacles["$opos"]=1
+      printf '\e[%sH\e[45m▓\e[m' "$opos"
+      break
+    done
+  done
+}
 
 len=3 delay=20
 init_term
@@ -74,6 +101,7 @@ for((;;)){
   read_keys "$delay"
   snake_direction L; draw_snake "$snakeX" "$snakeY"
   wall_collision "$snakeX" "$snakeY"
+  obstacle_collision "$snakeX" "$snakeY"
 
   skip "$len"&&{
     erase_snake

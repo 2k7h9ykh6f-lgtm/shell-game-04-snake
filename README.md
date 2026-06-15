@@ -27,6 +27,13 @@ cp snake /usr/local/bin
 ## Usage
 if installed to $PATH `snake`, otherwise `./snake` or `bash snake`
 
+## Game Modes
+**Classic:** `./snake`
+**Obstacle mode:** `./snake -o` or `./snake obstacle`
+
+In obstacle mode, magenta `▓` blocks are scattered across the field at startup.
+Hitting an obstacle ends the game. The number of obstacles scales with terminal size.
+
 ## Interface Controls
 arrow keys, or:  
 `H`, `A` - move left  
