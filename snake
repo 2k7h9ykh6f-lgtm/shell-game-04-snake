@@ -1,9 +1,39 @@
 #!/bin/bash
 
+THEME=${SNAKE_THEME:-}
+while (( $# )); do
+  case $1 in
+    -t|--theme) THEME=$2; shift 2 ;;
+    --theme=*)  THEME=${1#*=}; shift ;;
+    -h|--help)  printf 'usage: %s [-t|--theme classic|neon|none]\n' "${0##*/}"; exit 0 ;;
+    *) shift ;;
+  esac
+done
+if [[ -z $THEME ]]; then
+  [[ -n ${NO_COLOR+x} ]] && THEME=none || THEME=classic
+fi
+
 stty -echo
 trap 'end 130' EXIT INT; trap init_term WINCH
 
 skip(){ if (( ${n:=1} > ${1:-1} )); then :; else ((n++)); false; fi; }
+
+apply_theme(){
+  case $1 in
+    neon)
+      C_SNAKE=$'\e[102m \e[m'; C_FOOD=$'\e[105m \e[m'
+      C_LABEL=$'\e[1;96m';     C_RESET=$'\e[m'
+      C_GO1=$'\e[96m';         C_GO2=$'\e[95m' ;;
+    none|no-color|nocolor|mono|off)
+      C_SNAKE='#'; C_FOOD='*'
+      C_LABEL='';  C_RESET=''
+      C_GO1='';    C_GO2='' ;;
+    classic|*)
+      C_SNAKE=$'\e[42m \e[m'; C_FOOD=$'\e[41m \e[m'
+      C_LABEL=$'\e[1;32m';    C_RESET=$'\e[m'
+      C_GO1=$'\e[31m';        C_GO2=$'\e[37m' ;;
+  esac
+}
 
 init_term(){
   IFS='[;' read -sp $'\e[999;999H\e[6n' -d R -rs _ LINES COLS
@@ -18,8 +48,8 @@ end(){ stty echo; printf '\e[?1049l\e[?25h\e[?7h'; exit "${1:-0}"; }
 game_over(){
   local i
   until (( i > $1 )); do
-    for _ in 1 7; do
-      printf '\e[%sH\e[3D\e[3%dmGAME OVER\e[m' "$CENTER" "$_"
+    for _ in "$C_GO1" "$C_GO2"; do
+      printf '\e[%sH\e[3D%sGAME OVER%s' "$CENTER" "$_" "$C_RESET"
       sleep .1
     done; ((++i))
   done; end "$2"
@@ -39,12 +69,12 @@ read_keys(){
 }
 
 status_bar(){
-  printf '\e[999H\e[2K\e[1;32mSNAKE\e[m x:%d y:%d len:%d spe:%d' "$1" "$2" "$3" "$4"
+  printf '\e[999H\e[2K%sSNAKE%s x:%d y:%d len:%d spe:%d' "$C_LABEL" "$C_RESET" "$1" "$2" "$3" "$4"
 }
 
 rand_block(){
   ((blockX=SRANDOM%COLS+1)); ((blockY=SRANDOM%ROWS+1)); block="$blockY;$blockX"
-  printf '\e[%sH\e[41m \e[m' "$block"
+  printf '\e[%sH%s' "$block" "$C_FOOD"
 }
 
 snake_direction(){
@@ -57,9 +87,9 @@ snake_direction(){
   esac; ((snakeX+=dirX)); ((snakeY+=dirY))
 }
 
-draw_snake(){ snake+=("$2;$1"); printf '\e[%sH\e[42m \e[m' "${snake[-1]}"; }
+draw_snake(){ snake+=("$2;$1"); printf '\e[%sH%s' "${snake[-1]}" "$C_SNAKE"; }
 
-erase_snake(){ printf '\e[%sH \e[m' "${snake[0]}"; snake=("${snake[@]:1}"); }
+erase_snake(){ printf '\e[%sH ' "${snake[0]}"; snake=("${snake[@]:1}"); }
 
 consume_block(){ [[ $1 == "$block" ]]&&{ ((delay--)); ((len++)); rand_block; }; }
 
@@ -68,6 +98,7 @@ self_collision(){ [[ $1 == "${snake[-1]}" ]]&& game_over 4 1; }
 wall_collision(){ (( $1 < 1|| $1 > COLS|| $2 < 1|| $2 > ROWS ))&& game_over 4 1; }
 
 len=3 delay=20
+apply_theme "$THEME"
 init_term
 for((;;)){
   status_bar "$snakeX" "$snakeY" "$len" "$delay"

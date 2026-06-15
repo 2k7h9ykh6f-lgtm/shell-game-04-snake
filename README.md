@@ -27,6 +27,18 @@ cp snake /usr/local/bin
 ## Usage
 if installed to $PATH `snake`, otherwise `./snake` or `bash snake`
 
+## Themes
+optional color themes: `classic` (default), `neon`, and `none` (no color — for monochrome terminals or when recording/piping output)
+
+select with a flag or environment variable:
+```bash
+./snake --theme neon      # also: -t neon, --theme=neon
+SNAKE_THEME=neon ./snake  # via environment
+NO_COLOR=1 ./snake        # forces the no-color theme
+```
+the `none` theme draws the snake as `#` and food as `*` and emits no ANSI color codes
+precedence: `--theme`/`SNAKE_THEME` > `NO_COLOR` > `classic`
+
 ## Interface Controls
 arrow keys, or:  
 `H`, `A` - move left  
