@@ -10,7 +10,9 @@ init_term(){
   ((ROWS=LINES-1)); ((snakeX=COLS/2)); ((snakeY=ROWS/2)); CENTER="$snakeY;$snakeX"
 
   printf '\e[?1049h\e[2J\e[?25l\e[?7l'
+  obstacleMap=()
   rand_block
+  gen_obstacles
 }
 
 end(){ stty echo; printf '\e[?1049l\e[?25h\e[?7h'; exit "${1:-0}"; }
@@ -43,8 +45,27 @@ status_bar(){
 }
 
 rand_block(){
-  ((blockX=SRANDOM%COLS+1)); ((blockY=SRANDOM%ROWS+1)); block="$blockY;$blockX"
+  while :; do
+    ((blockX=SRANDOM%COLS+1)); ((blockY=SRANDOM%ROWS+1)); block="$blockY;$blockX"
+    [[ -z ${obstacleMap[$block]} ]]&& break
+  done
   printf '\e[%sH\e[41m \e[m' "$block"
+}
+
+gen_obstacles(){
+  local -A reserved; local count=${OBSTACLES:-0} max i=0 sx x y pos
+  [[ $count =~ ^[0-9]+$ ]]|| count=0
+  ((max=ROWS*COLS/4)); (( count > max ))&& count=$max
+
+  reserved[$block]=1
+  for((sx=snakeX-1; sx<=snakeX+len+1; sx++)){ reserved["$snakeY;$sx"]=1; }
+
+  while (( i < count )); do
+    ((x=SRANDOM%COLS+1)); ((y=SRANDOM%ROWS+1)); pos="$y;$x"
+    [[ -n ${reserved[$pos]} || -n ${obstacleMap[$pos]} ]]&& continue
+    obstacleMap[$pos]=1; ((i++))
+    printf '\e[%sH\e[47m \e[m' "$pos"
+  done
 }
 
 snake_direction(){
@@ -67,13 +88,16 @@ self_collision(){ [[ $1 == "${snake[-1]}" ]]&& game_over 4 1; }
 
 wall_collision(){ (( $1 < 1|| $1 > COLS|| $2 < 1|| $2 > ROWS ))&& game_over 4 1; }
 
-len=3 delay=20
+obstacle_collision(){ [[ -n ${obstacleMap["$2;$1"]} ]]&& game_over 4 1; }
+
+declare -A obstacleMap; len=3 delay=20
 init_term
 for((;;)){
   status_bar "$snakeX" "$snakeY" "$len" "$delay"
   read_keys "$delay"
   snake_direction L; draw_snake "$snakeX" "$snakeY"
   wall_collision "$snakeX" "$snakeY"
+  obstacle_collision "$snakeX" "$snakeY"
 
   skip "$len"&&{
     erase_snake

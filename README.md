@@ -27,6 +27,17 @@ cp snake /usr/local/bin
 ## Usage
 if installed to $PATH `snake`, otherwise `./snake` or `bash snake`
 
+## Obstacle Mode
+set `OBSTACLES` to the number of static obstacles to spawn at the start of the game; the snake dies on contact. obstacles never spawn on the snake's starting position or on the food. leave it unset (or `0`) for the classic game
+```bash
+# 10 obstacles
+OBSTACLES=10 ./snake
+
+# works with every launch method
+OBSTACLES=10 bash snake
+OBSTACLES=10 snake   # if installed to $PATH
+```
+
 ## Interface Controls
 arrow keys, or:  
 `H`, `A` - move left  
