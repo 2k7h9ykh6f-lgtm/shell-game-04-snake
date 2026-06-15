@@ -3,6 +3,9 @@
 stty -echo
 trap 'end 130' EXIT INT; trap init_term WINCH
 
+SCORE_FILE="${HOME}/.snake_scores"
+score_list=() name_list=() date_list=()
+
 skip(){ if (( ${n:=1} > ${1:-1} )); then :; else ((n++)); false; fi; }
 
 init_term(){
@@ -15,6 +18,99 @@ init_term(){
 
 end(){ stty echo; printf '\e[?1049l\e[?25h\e[?7h'; exit "${1:-0}"; }
 
+# --- Leaderboard functions ---
+
+load_scores(){
+  score_list=() name_list=() date_list=()
+  [[ -f "$SCORE_FILE" ]] || return
+  while IFS='|' read -r s n d; do
+    [[ -z "$s" ]] && continue
+    score_list+=("$s")
+    name_list+=("$n")
+    date_list+=("$d")
+  done < "$SCORE_FILE"
+}
+
+save_scores(){
+  > "$SCORE_FILE"
+  for i in "${!score_list[@]}"; do
+    printf '%s|%s|%s\n' "${score_list[$i]}" "${name_list[$i]}" "${date_list[$i]}" >> "$SCORE_FILE"
+  done
+}
+
+qualifies(){
+  (( ${#score_list[@]} < 5 )) && return 0
+  (( $1 > ${score_list[-1]} )) && return 0
+  return 1
+}
+
+insert_score(){
+  local new_score=$1 new_name=$2 new_date=$3
+  score_list+=("$new_score")
+  name_list+=("$new_name")
+  date_list+=("$new_date")
+
+  # Bubble sort descending by score
+  local n=${#score_list[@]}
+  for (( i=0; i<n-1; i++ )); do
+    for (( j=0; j<n-i-1; j++ )); do
+      if (( score_list[j] < score_list[j+1] )); then
+        local ts=${score_list[$j]}; score_list[$j]=${score_list[$j+1]}; score_list[$j+1]=$ts
+        local tn=${name_list[$j]}; name_list[$j]=${name_list[$j+1]}; name_list[$j+1]=$tn
+        local td=${date_list[$j]}; date_list[$j]=${date_list[$j+1]}; date_list[$j+1]=$td
+      fi
+    done
+  done
+
+  # Keep top 5 only
+  score_list=("${score_list[@]:0:5}")
+  name_list=("${name_list[@]:0:5}")
+  date_list=("${date_list[@]:0:5}")
+
+  save_scores
+}
+
+show_leaderboard(){
+  load_scores
+  printf '\e[2J\e[H'
+  printf '\n  \e[1;33m===== LEADERBOARD (Top 5) =====\e[m\n\n'
+  if (( ${#score_list[@]} == 0 )); then
+    printf '    (no scores yet)\n'
+  else
+    printf '    \e[1m%-6s %-14s %-8s %s\e[m\n' "RANK" "NAME" "SCORE" "DATE"
+    printf '    %-6s %-14s %-8s %s\n' "------" "--------------" "--------" "----------"
+    for i in "${!score_list[@]}"; do
+      local rank=$((i+1))
+      local color=""
+      case $rank in
+        1) color='\e[1;33m';; # gold
+        2) color='\e[1;37m';; # silver
+        3) color='\e[1;33m';; # bronze-ish
+        *) color='\e[m';;
+      esac
+      printf "    ${color}#%-5d %-14s %-8s %s\e[m\n" "$rank" "${name_list[$i]}" "${score_list[$i]}" "${date_list[$i]}"
+    done
+  fi
+  printf '\n    \e[2mPress any key to exit...\e[m'
+  stty -echo
+  read -rsn1
+}
+
+prompt_nickname(){
+  printf '\e[2J\e[H'
+  printf '\n  \e[1;33m** NEW HIGH SCORE: %d **\e[m\n\n' "$1"
+  printf '    Enter your nickname (max 12 chars, Enter for default "Player"): '
+  stty echo
+  read -r PLAYER_NICK
+  stty -echo
+  PLAYER_NICK="${PLAYER_NICK:-Player}"
+  PLAYER_NICK="${PLAYER_NICK:0:12}"
+  # Remove pipe characters to avoid breaking the file format
+  PLAYER_NICK="${PLAYER_NICK//|/_}"
+}
+
+# --- End leaderboard functions ---
+
 game_over(){
   local i
   until (( i > $1 )); do
@@ -22,7 +118,17 @@ game_over(){
       printf '\e[%sH\e[3D\e[3%dmGAME OVER\e[m' "$CENTER" "$_"
       sleep .1
     done; ((++i))
-  done; end "$2"
+  done
+
+  # Leaderboard check
+  load_scores
+  if (( score > 0 )) && qualifies "$score"; then
+    prompt_nickname "$score"
+    insert_score "$score" "$PLAYER_NICK" "$(date +%Y-%m-%d)"
+  fi
+
+  show_leaderboard
+  end "${2:-0}"
 }
 
 read_keys(){
@@ -39,7 +145,7 @@ read_keys(){
 }
 
 status_bar(){
-  printf '\e[999H\e[2K\e[1;32mSNAKE\e[m x:%d y:%d len:%d spe:%d' "$1" "$2" "$3" "$4"
+  printf '\e[999H\e[2K\e[1;32mSNAKE\e[m x:%d y:%d len:%d spe:%d score:%d' "$1" "$2" "$3" "$4" "$5"
 }
 
 rand_block(){
@@ -61,16 +167,16 @@ draw_snake(){ snake+=("$2;$1"); printf '\e[%sH\e[42m \e[m' "${snake[-1]}"; }
 
 erase_snake(){ printf '\e[%sH \e[m' "${snake[0]}"; snake=("${snake[@]:1}"); }
 
-consume_block(){ [[ $1 == "$block" ]]&&{ ((delay--)); ((len++)); rand_block; }; }
+consume_block(){ [[ $1 == "$block" ]]&&{ ((delay--)); ((len++)); ((score++)); rand_block; }; }
 
 self_collision(){ [[ $1 == "${snake[-1]}" ]]&& game_over 4 1; }
 
 wall_collision(){ (( $1 < 1|| $1 > COLS|| $2 < 1|| $2 > ROWS ))&& game_over 4 1; }
 
-len=3 delay=20
+score=0 len=3 delay=20
 init_term
 for((;;)){
-  status_bar "$snakeX" "$snakeY" "$len" "$delay"
+  status_bar "$snakeX" "$snakeY" "$len" "$delay" "$score"
   read_keys "$delay"
   snake_direction L; draw_snake "$snakeX" "$snakeY"
   wall_collision "$snakeX" "$snakeY"
