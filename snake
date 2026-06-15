@@ -34,7 +34,20 @@ read_keys(){
   esac
 
   while read -rsn1 -t "$i"; do
-    [[ $REPLY == $'\e' ]]&& read -rsn2 -t "$i"; KEY="${REPLY^^}"
+    if [[ $REPLY == $'\e' ]]; then
+      read -rsn1 -t "$i" k2
+      if [[ $k2 == '[' || $k2 == 'O' ]]; then
+        read -rsn1 -t "$i" k3
+        case $k3 in
+          A) KEY=K;; B) KEY=J;; C) KEY=L;; D) KEY=H;;
+          *) KEY=;;
+        esac
+      else
+        KEY=
+      fi
+    else
+      KEY="${REPLY^^}"
+    fi
   done
 }
 
@@ -50,10 +63,10 @@ rand_block(){
 snake_direction(){
   case ${KEY:-$1} in
     Q) game_over 2;;
-    H|A|\[D) (( dirX == 1 ))||{ dirX=-1 dirY=0; };;
-    J|S|\[B) (( dirY == -1 ))||{ dirX=0 dirY=1; };;
-    K|W|\[A) (( dirY == 1 ))||{ dirX=0 dirY=-1; };;
-    L|D|\[C) (( dirX == -1 ))||{ dirX=1 dirY=0; };;
+    H|A) (( dirX == 1 ))||{ dirX=-1 dirY=0; };;    # LEFT  (h/a/←)
+    J|S) (( dirY == -1 ))||{ dirX=0 dirY=1; };;    # DOWN  (j/s/↓)
+    K|W) (( dirY == 1 ))||{ dirX=0 dirY=-1; };;    # UP    (k/w/↑)
+    L|D) (( dirX == -1 ))||{ dirX=1 dirY=0; };;    # RIGHT (l/d/→)
   esac; ((snakeX+=dirX)); ((snakeY+=dirY))
 }
 
