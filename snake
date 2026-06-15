@@ -39,7 +39,7 @@ read_keys(){
 }
 
 status_bar(){
-  printf '\e[999H\e[2K\e[1;32mSNAKE\e[m x:%d y:%d len:%d spe:%d' "$1" "$2" "$3" "$4"
+  printf '\e[999H\e[2K\e[1;32mSNAKE\e[m x:%d y:%d len:%d spe:%d score:%d \e[1;33mx%d\e[m' "$1" "$2" "$3" "$4" "$5" "$6"
 }
 
 rand_block(){
@@ -61,16 +61,28 @@ draw_snake(){ snake+=("$2;$1"); printf '\e[%sH\e[42m \e[m' "${snake[-1]}"; }
 
 erase_snake(){ printf '\e[%sH \e[m' "${snake[0]}"; snake=("${snake[@]:1}"); }
 
-consume_block(){ [[ $1 == "$block" ]]&&{ ((delay--)); ((len++)); rand_block; }; }
+consume_block(){
+  [[ $1 == "$block" ]]|| return
+  local now=$EPOCHSECONDS
+  if (( lastEat && now - lastEat <= COMBO_WINDOW )); then
+    (( combo < COMBO_MAX ))&& ((combo++))
+  else
+    combo=1
+  fi
+  lastEat=$now
+  ((score += BASE_POINTS * combo))
+  ((delay--)); ((len++)); rand_block
+}
 
 self_collision(){ [[ $1 == "${snake[-1]}" ]]&& game_over 4 1; }
 
 wall_collision(){ (( $1 < 1|| $1 > COLS|| $2 < 1|| $2 > ROWS ))&& game_over 4 1; }
 
-len=3 delay=20
+len=3 delay=20 score=0 combo=1 lastEat=0 COMBO_WINDOW=3 COMBO_MAX=5 BASE_POINTS=1
 init_term
 for((;;)){
-  status_bar "$snakeX" "$snakeY" "$len" "$delay"
+  (( combo > 1 && EPOCHSECONDS - lastEat > COMBO_WINDOW ))&& combo=1
+  status_bar "$snakeX" "$snakeY" "$len" "$delay" "$score" "$combo"
   read_keys "$delay"
   snake_direction L; draw_snake "$snakeX" "$snakeY"
   wall_collision "$snakeX" "$snakeY"
